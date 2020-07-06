@@ -55,7 +55,7 @@ namespace StockAnalyzer.Windows
                 // Since we changed the url, exception is generated. and if we use async void, 
                 // exception will not be caught.
                 // application will crash
-                GetStocks();
+                await GetStocks();
             }
             catch (Exception ex)
             {
@@ -69,7 +69,7 @@ namespace StockAnalyzer.Windows
             #endregion
         }
 
-        public async void GetStocks()
+        public async Task GetStocks()
         {
             using (var client = new HttpClient())
             {
