@@ -53,15 +53,26 @@ namespace StockAnalyzer.Windows
             using (var client = new HttpClient())
             {
                 var response = await client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}");
+                // this throws exception if status code is not ok
+                try
+                {
+                    response.EnsureSuccessStatusCode();
 
-                //client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}").Result;
-                //will make it synchronous. it can result it into deadlock in certain situations
-                
-                var content = await response.Content.ReadAsStringAsync();
+                    //client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}").Result;
+                    //will make it synchronous. it can result it into deadlock in certain situations
 
-                var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
+                    var content = await response.Content.ReadAsStringAsync();
 
-                Stocks.ItemsSource = data;
+                    var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
+
+                    Stocks.ItemsSource = data;
+
+
+                }
+                catch (Exception ex)
+                {
+                    this.Notes.Text = ex.Message;
+                }
             }
 
             
