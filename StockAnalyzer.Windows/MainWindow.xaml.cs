@@ -18,7 +18,30 @@ namespace StockAnalyzer.Windows
             InitializeComponent();
         }
 
-        private void Search_Click(object sender, RoutedEventArgs e)
+        //private void Search_Click(object sender, RoutedEventArgs e)
+        //{
+        //    #region Before loading stock data
+        //    var watch = new Stopwatch();
+        //    watch.Start();
+        //    StockProgress.Visibility = Visibility.Visible;
+        //    StockProgress.IsIndeterminate = true;
+        //    #endregion
+
+        //    var client = new WebClient();
+
+        //    var content = client.DownloadString($"http://localhost:61363/api/stocks/{Ticker.Text}");
+
+        //    var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
+
+        //    Stocks.ItemsSource = data;
+
+        //    #region After stock data is loaded
+        //    StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
+        //    StockProgress.Visibility = Visibility.Hidden;
+        //    #endregion
+        //}
+
+        private async void Search_Click(object sender, RoutedEventArgs e)
         {
             #region Before loading stock data
             var watch = new Stopwatch();
@@ -27,13 +50,21 @@ namespace StockAnalyzer.Windows
             StockProgress.IsIndeterminate = true;
             #endregion
 
-            var client = new WebClient();
+            using (var client = new HttpClient())
+            {
+                var response = await client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}");
 
-            var content = client.DownloadString($"http://localhost:61363/api/stocks/{Ticker.Text}");
+                //client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}").Result;
+                //will make it synchronous. it can result it into deadlock in certain situations
+                
+                var content = await response.Content.ReadAsStringAsync();
 
-            var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
+                var data = JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
 
-            Stocks.ItemsSource = data;
+                Stocks.ItemsSource = data;
+            }
+
+            
 
             #region After stock data is loaded
             StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
