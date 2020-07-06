@@ -50,9 +50,31 @@ namespace StockAnalyzer.Windows
             StockProgress.IsIndeterminate = true;
             #endregion
 
+            try
+            {
+                // Since we changed the url, exception is generated. and if we use async void, 
+                // exception will not be caught.
+                // application will crash
+                GetStocks();
+            }
+            catch (Exception ex)
+            {
+                Notes.Text = ex.Message;
+            }
+            
+
+            #region After stock data is loaded
+            StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
+            StockProgress.Visibility = Visibility.Hidden;
+            #endregion
+        }
+
+        public async void GetStocks()
+        {
             using (var client = new HttpClient())
             {
-                var response = await client.GetAsync($"http://localhost:61363/api/stocks/{Ticker.Text}");
+                // Changed to url that does not exists, will throw the exception
+                var response = await client.GetAsync($"http://localhost123:61363/myapi/stocks/{Ticker.Text}");
                 // this throws exception if status code is not ok
                 try
                 {
@@ -75,12 +97,6 @@ namespace StockAnalyzer.Windows
                 }
             }
 
-            
-
-            #region After stock data is loaded
-            StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
-            StockProgress.Visibility = Visibility.Hidden;
-            #endregion
         }
 
         private void Hyperlink_OnRequestNavigate(object sender, RequestNavigateEventArgs e)
