@@ -95,7 +95,15 @@ namespace StockAnalyzer.Windows
                 {
                     Stocks.ItemsSource = data.Where(price => price.Ticker == Ticker.Text);
                 });
-            });
+            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+
+            loadLinesTask.ContinueWith(t =>
+            {
+                Dispatcher.Invoke(() =>
+                {
+                    Notes.Text = t.Exception.InnerException.Message;
+                });
+            },TaskContinuationOptions.OnlyOnFaulted);
 
             processStocksTask.ContinueWith(_ =>
             {
