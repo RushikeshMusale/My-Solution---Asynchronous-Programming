@@ -44,7 +44,7 @@ namespace StockAnalyzer.Windows
         //    #endregion
         //}
 
-        private async void Search_Click(object sender, RoutedEventArgs e)
+        private void Search_Click(object sender, RoutedEventArgs e)
         {
             #region Before loading stock data
             var watch = new Stopwatch();
@@ -53,58 +53,61 @@ namespace StockAnalyzer.Windows
             StockProgress.IsIndeterminate = true;
             #endregion
 
-            try
+
+            // Since we changed the url, exception is generated. and if we use async void, 
+            // exception will not be caught.
+            // application will crash
+            // await GetStocks(); -- Module 3 begins
+
+
+            // task.run will execute operation on differnt thread
+            var loadLinesTask = Task.Run(() =>
             {
-                // Since we changed the url, exception is generated. and if we use async void, 
-                // exception will not be caught.
-                // application will crash
-                // await GetStocks(); -- Module 3 begins
+                var lines = File.ReadAllLines(@"StockPrices_Small.csv");
+                return lines;
+            });
 
+            // await keyword provides continuation block, but for the task, we have to manually do it
+            // so that next operation is executed only when first operation is completed.
+            var processStocksTask = loadLinesTask.ContinueWith(t =>
+            {
+                var lines = t.Result;
 
-               
-                // We will have to await this operation, otherwise time elapsed will have incorrect values.                
-                await Task.Run(() =>
+                var data = new List<StockPrice>();
+                foreach (var line in lines.Skip(1))
                 {
-                    var lines = File.ReadAllLines(@"StockPrices_Small.csv");
+                    var segments = line.Split(',');
 
-                    var data = new List<StockPrice>();
-
-                    foreach (var line in lines.Skip(1))
+                    for (var i = 0; i < segments.Length; i++) segments[i] = segments[i].Trim('\'', '"');
+                    var price = new StockPrice
                     {
-                        var segments = line.Split(',');
+                        Ticker = segments[0],
+                        TradeDate = DateTime.ParseExact(segments[1], "M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture),
+                        Volume = Convert.ToInt32(segments[6], CultureInfo.InvariantCulture),
+                        Change = Convert.ToDecimal(segments[7], CultureInfo.InvariantCulture),
+                        ChangePercent = Convert.ToDecimal(segments[8], CultureInfo.InvariantCulture),
+                    };
+                    data.Add(price);
+                }
 
-                        for (var i = 0; i < segments.Length; i++) segments[i] = segments[i].Trim('\'', '"');
-                        var price = new StockPrice
-                        {
-                            Ticker = segments[0],
-                            TradeDate = DateTime.ParseExact(segments[1], "M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture),
-                            Volume = Convert.ToInt32(segments[6], CultureInfo.InvariantCulture),
-                            Change = Convert.ToDecimal(segments[7], CultureInfo.InvariantCulture),
-                            ChangePercent = Convert.ToDecimal(segments[8], CultureInfo.InvariantCulture),
-                        };
-                        data.Add(price);
-                    }
-
-                    // Since task operation runs on different thread, we can't directly set objects on UI thread
-                    Dispatcher.Invoke(() =>
-                    {
-                        Stocks.ItemsSource = data.Where(price => price.Ticker == Ticker.Text);
-                    });
-                    
+                // Since task operation runs on different thread, we can't directly set objects on UI thread
+                Dispatcher.Invoke(() =>
+                {
+                    Stocks.ItemsSource = data.Where(price => price.Ticker == Ticker.Text);
                 });
+            });
 
-               
-            }
-            catch (Exception ex)
+            processStocksTask.ContinueWith(_ =>
             {
-                Notes.Text = ex.Message;
-            }
-            
+                Dispatcher.Invoke(() =>
+                {
+                        #region After stock data is loaded
+                        StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
+                        StockProgress.Visibility = Visibility.Hidden;
+                        #endregion
+                    });
+            });
 
-            #region After stock data is loaded
-            StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
-            StockProgress.Visibility = Visibility.Hidden;
-            #endregion
         }
 
         public async Task GetStocks()
