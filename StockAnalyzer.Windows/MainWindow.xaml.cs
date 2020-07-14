@@ -6,6 +6,7 @@ using System.IO;
 using System.Linq;
 using System.Net;
 using System.Net.Http;
+using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
 using System.Windows.Navigation;
@@ -16,6 +17,7 @@ namespace StockAnalyzer.Windows
 {
     public partial class MainWindow : Window
     {
+        CancellationTokenSource _cancellationTokenSource = null;
         public MainWindow()
         {
             InitializeComponent();
@@ -51,6 +53,7 @@ namespace StockAnalyzer.Windows
             watch.Start();
             StockProgress.Visibility = Visibility.Visible;
             StockProgress.IsIndeterminate = true;
+            Search.Content = "Cancel";
             #endregion
 
 
@@ -59,16 +62,26 @@ namespace StockAnalyzer.Windows
             // application will crash
             // await GetStocks(); -- Module 3 begins
 
-
-            // task.run will execute operation on differnt thread
-            var loadLinesTask = Task.Run(() =>
+            if(_cancellationTokenSource  != null  )
             {
-                var lines = File.ReadAllLines(@"StockPrices_Small.csv");
-                return lines;
+                _cancellationTokenSource.Cancel();
+                _cancellationTokenSource = null;
+                return;               
+            }
+
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            // we can also register a delegate to know when the cancellation is performed
+            _cancellationTokenSource.Token.Register(() =>
+            {
+                Notes.Text += "Search is cancelled"; // this will run on calling thread (UI), no need for dispatcher
             });
 
+            // task.run will execute operation on differnt thread
+            var loadLinesTask = SearchForStocks(_cancellationTokenSource.Token);
+
             // await keyword provides continuation block, but for the task, we have to manually do it
-            // so that next operation is executed only when first operation is completed.
+            // so that next operation is executed only when first operation is completed.            
             var processStocksTask = loadLinesTask.ContinueWith(t =>
             {
                 var lines = t.Result;
@@ -95,7 +108,10 @@ namespace StockAnalyzer.Windows
                 {
                     Stocks.ItemsSource = data.Where(price => price.Ticker == Ticker.Text);
                 });
-            }, TaskContinuationOptions.OnlyOnRanToCompletion);
+            }, _cancellationTokenSource.Token,  // This token ensures that if cancellation is already requested, then task is not executed
+            TaskContinuationOptions.OnlyOnRanToCompletion,
+            TaskScheduler.Current
+            );
 
             loadLinesTask.ContinueWith(t =>
             {
@@ -112,10 +128,36 @@ namespace StockAnalyzer.Windows
                         #region After stock data is loaded
                         StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
                         StockProgress.Visibility = Visibility.Hidden;
+                        Search.Content = "Search";
                         #endregion
-                    });
+                });
             });
 
+        }
+
+        private Task<List<string>> SearchForStocks(CancellationToken cancellationToken)
+        {          
+            var loadLinesTask = Task.Run(async () =>
+            {
+                List<string> lines = new List<string>();
+                using (var stream = new StreamReader(File.OpenRead(@"StockPrices_Small.csv")))
+                {
+                    string line;
+                    while ((line = await stream.ReadLineAsync()) != null)
+                    {
+                        // Two ways to handle cancellation
+                        // Option 1: to check if token cancellation is requested
+                        if (cancellationToken.IsCancellationRequested)
+                            return lines;
+                        // Option 2: throw exception using token.ThrowIfCancellationRequested();
+                        lines.Add(line);                       
+                    }
+
+                    return lines;
+                }
+            }, cancellationToken);
+
+            return loadLinesTask;            
         }
 
         public async Task GetStocks()
