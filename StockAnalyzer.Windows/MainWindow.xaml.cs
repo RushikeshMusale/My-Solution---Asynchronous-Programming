@@ -55,7 +55,24 @@ namespace StockAnalyzer.Windows
             StockProgress.Visibility = Visibility.Visible;
             StockProgress.IsIndeterminate = true;
             Search.Content = "Cancel";
-            #endregion           
+            #endregion
+
+            if (_cancellationTokenSource != null)
+            {
+                _cancellationTokenSource.Cancel();
+                // Anther way to cancel task after some time;
+                //_cancellationTokenSource.CancelAfter(2000);
+                _cancellationTokenSource = null;
+                return;
+            }
+
+            _cancellationTokenSource = new CancellationTokenSource();
+
+            // we can also register a delegate to know when the cancellation is performed
+            _cancellationTokenSource.Token.Register(() =>
+            {
+                Notes.Text += "Search is cancelled"; // this will run on calling thread (UI), no need for dispatcher
+            });
 
             StockService service = new StockService();
             var tickerLoadingTasks = new List<Task<IEnumerable<StockPrice>>>();
@@ -64,14 +81,27 @@ namespace StockAnalyzer.Windows
                 var tickers = Ticker.Text.Split(',', ' ');
                 foreach (var ticker in tickers)
                 {
-                    var loadTask = service.GetStockPricesFor(ticker);
+                    var loadTask = service.GetStockPricesFor(ticker, _cancellationTokenSource.Token);
                     tickerLoadingTasks.Add(loadTask);
                 }
+
+                var timeoutTask = Task.Delay(2000);
+
+                var allstocks = Task.WhenAll(tickerLoadingTasks);
                 
+                var completedTask = await Task.WhenAny(timeoutTask, allstocks);
 
-                var allstocks = await Task.WhenAll(tickerLoadingTasks);              
+                if (completedTask == timeoutTask)
+                {
+                    _cancellationTokenSource.Cancel();
+                    _cancellationTokenSource = null;
+                    throw new Exception("Timeout!!");
+                    
+                }
 
-                Stocks.ItemsSource = allstocks.SelectMany(stock => stock);
+                // Task.Result should only be used when task is actually completed.
+                // From the previous line, we know that task is completed
+                Stocks.ItemsSource = allstocks.Result.SelectMany(stock => stock);
 
             }catch (Exception ex)
             {
