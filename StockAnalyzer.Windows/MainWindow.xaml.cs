@@ -12,6 +12,7 @@ using System.Windows;
 using System.Windows.Navigation;
 using Newtonsoft.Json;
 using StockAnalyzer.Core.Domain;
+using StockAnalyzer.Windows.Services;
 
 namespace StockAnalyzer.Windows
 {
@@ -46,7 +47,7 @@ namespace StockAnalyzer.Windows
         //    #endregion
         //}
 
-        private void Search_Click(object sender, RoutedEventArgs e)
+        private async void Search_Click(object sender, RoutedEventArgs e)
         {
             #region Before loading stock data
             var watch = new Stopwatch();
@@ -54,85 +55,35 @@ namespace StockAnalyzer.Windows
             StockProgress.Visibility = Visibility.Visible;
             StockProgress.IsIndeterminate = true;
             Search.Content = "Cancel";
-            #endregion
+            #endregion           
 
-
-            // Since we changed the url, exception is generated. and if we use async void, 
-            // exception will not be caught.
-            // application will crash
-            // await GetStocks(); -- Module 3 begins
-
-            if(_cancellationTokenSource  != null  )
+            StockService service = new StockService();
+            var tickerLoadingTasks = new List<Task<IEnumerable<StockPrice>>>();
+            try
             {
-                _cancellationTokenSource.Cancel();
-                _cancellationTokenSource = null;
-                return;               
+                var tickers = Ticker.Text.Split(',', ' ');
+                foreach (var ticker in tickers)
+                {
+                    var loadTask = service.GetStockPricesFor(ticker);
+                    tickerLoadingTasks.Add(loadTask);
+                }
+                
+
+                var allstocks = await Task.WhenAll(tickerLoadingTasks);              
+
+                Stocks.ItemsSource = allstocks.SelectMany(stock => stock);
+
+            }catch (Exception ex)
+            {
+                Notes.Text += ex.Message + Environment.NewLine;
             }
 
-            _cancellationTokenSource = new CancellationTokenSource();
-
-            // we can also register a delegate to know when the cancellation is performed
-            _cancellationTokenSource.Token.Register(() =>
-            {
-                Notes.Text += "Search is cancelled"; // this will run on calling thread (UI), no need for dispatcher
-            });
-
-            // task.run will execute operation on differnt thread
-            var loadLinesTask = SearchForStocks(_cancellationTokenSource.Token);
-
-            // await keyword provides continuation block, but for the task, we have to manually do it
-            // so that next operation is executed only when first operation is completed.            
-            var processStocksTask = loadLinesTask.ContinueWith(t =>
-            {
-                var lines = t.Result;
-
-                var data = new List<StockPrice>();
-                foreach (var line in lines.Skip(1))
-                {
-                    var segments = line.Split(',');
-
-                    for (var i = 0; i < segments.Length; i++) segments[i] = segments[i].Trim('\'', '"');
-                    var price = new StockPrice
-                    {
-                        Ticker = segments[0],
-                        TradeDate = DateTime.ParseExact(segments[1], "M/d/yyyy h:mm:ss tt", CultureInfo.InvariantCulture),
-                        Volume = Convert.ToInt32(segments[6], CultureInfo.InvariantCulture),
-                        Change = Convert.ToDecimal(segments[7], CultureInfo.InvariantCulture),
-                        ChangePercent = Convert.ToDecimal(segments[8], CultureInfo.InvariantCulture),
-                    };
-                    data.Add(price);
-                }
-
-                // Since task operation runs on different thread, we can't directly set objects on UI thread
-                Dispatcher.Invoke(() =>
-                {
-                    Stocks.ItemsSource = data.Where(price => price.Ticker == Ticker.Text);
-                });
-            }, _cancellationTokenSource.Token,  // This token ensures that if cancellation is already requested, then task is not executed
-            TaskContinuationOptions.OnlyOnRanToCompletion,
-            TaskScheduler.Current
-            );
-
-            loadLinesTask.ContinueWith(t =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                    Notes.Text = t.Exception.InnerException.Message;
-                });
-            },TaskContinuationOptions.OnlyOnFaulted);
-
-            processStocksTask.ContinueWith(_ =>
-            {
-                Dispatcher.Invoke(() =>
-                {
-                        #region After stock data is loaded
-                        StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
-                        StockProgress.Visibility = Visibility.Hidden;
-                        Search.Content = "Search";
-                        #endregion
-                });
-            });
-
+        
+            #region After stock data is loaded
+            StocksStatus.Text = $"Loaded stocks for {Ticker.Text} in {watch.ElapsedMilliseconds}ms";
+            StockProgress.Visibility = Visibility.Hidden;
+            Search.Content = "Search";
+            #endregion
         }
 
         private Task<List<string>> SearchForStocks(CancellationToken cancellationToken)
