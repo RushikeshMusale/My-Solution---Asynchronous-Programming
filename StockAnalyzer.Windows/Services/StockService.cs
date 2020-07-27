@@ -10,7 +10,12 @@ using StockAnalyzer.Core.Domain;
 
 namespace StockAnalyzer.Windows.Services
 {
-    public class StockService
+    public interface IStockService
+    {
+         Task<IEnumerable<StockPrice>> GetStockPricesFor(string ticker, CancellationToken token);
+    }
+
+    public class StockService: IStockService
     {
         public async Task<IEnumerable<StockPrice>> GetStockPricesFor(string ticker, CancellationToken token)
         {
@@ -24,6 +29,22 @@ namespace StockAnalyzer.Windows.Services
 
                 return JsonConvert.DeserializeObject<IEnumerable<StockPrice>>(content);
             }
+        }
+    }
+
+    public class MockStockService : IStockService
+    {
+        public Task<IEnumerable<StockPrice>> GetStockPricesFor(string ticker, CancellationToken token)
+        {
+            List<StockPrice> stocks = new List<StockPrice>
+            {
+                new StockPrice{Ticker="MSFT", Change= .5m, ChangePercent=.75m},
+                new StockPrice{Ticker="MSFT", Change= .3m, ChangePercent=.15m},
+                new StockPrice{Ticker="GOOGL", Change= .3m, ChangePercent=.25m},
+                new StockPrice{Ticker="GOOGL", Change= .5m, ChangePercent=.45m},
+            };
+
+            return Task.FromResult(stocks.Where(stock => stock.Ticker.Equals(ticker)));
         }
     }
 }

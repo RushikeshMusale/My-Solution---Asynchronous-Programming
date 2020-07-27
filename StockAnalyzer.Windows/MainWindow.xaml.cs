@@ -65,7 +65,7 @@ namespace StockAnalyzer.Windows
                 _cancellationTokenSource = null;
                 return;
             }
-
+            
             _cancellationTokenSource = new CancellationTokenSource();
 
             // we can also register a delegate to know when the cancellation is performed
@@ -74,7 +74,7 @@ namespace StockAnalyzer.Windows
                 Notes.Text += "Search is cancelled"; // this will run on calling thread (UI), no need for dispatcher
             });
 
-            StockService service = new StockService();
+            IStockService service = new MockStockService();
             var tickerLoadingTasks = new List<Task<IEnumerable<StockPrice>>>();
             try
             {
