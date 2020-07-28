@@ -9,6 +9,7 @@ using System.Net.Http;
 using System.Threading;
 using System.Threading.Tasks;
 using System.Windows;
+using System.Windows.Controls;
 using System.Windows.Navigation;
 using Newtonsoft.Json;
 using StockAnalyzer.Core.Domain;
@@ -53,7 +54,9 @@ namespace StockAnalyzer.Windows
             var watch = new Stopwatch();
             watch.Start();
             StockProgress.Visibility = Visibility.Visible;
-            StockProgress.IsIndeterminate = true;
+            StockProgress.IsIndeterminate = false;
+            StockProgress.Maximum = Ticker.Text.Split(' ', ',').Count();
+            StockProgress.Minimum = 0;
             Search.Content = "Cancel";
             #endregion
 
@@ -74,34 +77,19 @@ namespace StockAnalyzer.Windows
                 Notes.Text += "Search is cancelled"; // this will run on calling thread (UI), no need for dispatcher
             });
 
-            IStockService service = new MockStockService();
-            var tickerLoadingTasks = new List<Task<IEnumerable<StockPrice>>>();
+            //Progress bar should progress when stocks for one of the tickers is loaded
+            // we can do it by using Progress objects ProgressChanged event & Report method
+
+            var progress = new Progress<IEnumerable<StockPrice>>();
+            progress.ProgressChanged += (_, stocks) =>
+            {
+                Notes.Text += "Loaded Stocks" + stocks.Count() +" for "+ stocks.First().Ticker + Environment.NewLine;
+                StockProgress.Value += 1;
+            };
+            
             try
             {
-                var tickers = Ticker.Text.Split(',', ' ');
-                foreach (var ticker in tickers)
-                {
-                    var loadTask = service.GetStockPricesFor(ticker, _cancellationTokenSource.Token);
-                    tickerLoadingTasks.Add(loadTask);
-                }
-
-                var timeoutTask = Task.Delay(2000);
-
-                var allstocks = Task.WhenAll(tickerLoadingTasks);
-                
-                var completedTask = await Task.WhenAny(timeoutTask, allstocks);
-
-                if (completedTask == timeoutTask)
-                {
-                    _cancellationTokenSource.Cancel();
-                    _cancellationTokenSource = null;
-                    throw new Exception("Timeout!!");
-                    
-                }
-
-                // Task.Result should only be used when task is actually completed.
-                // From the previous line, we know that task is completed
-                Stocks.ItemsSource = allstocks.Result.SelectMany(stock => stock);
+                await LoadStocks(progress);
 
             }catch (Exception ex)
             {
@@ -114,6 +102,32 @@ namespace StockAnalyzer.Windows
             StockProgress.Visibility = Visibility.Hidden;
             Search.Content = "Search";
             #endregion
+        }
+       
+
+        private async Task LoadStocks(IProgress<IEnumerable<StockPrice>> progress = null)
+        {
+            var tickers = Ticker.Text.Split(',', ' ');
+
+            var service = new StockService();
+
+            var tickerLoadingTasks = new List<Task<IEnumerable<StockPrice>>>();
+
+            foreach (var ticker in tickers)
+            {
+                var loadTask = service.GetStockPricesFor(ticker, _cancellationTokenSource.Token);
+
+                loadTask = loadTask.ContinueWith(stockTask =>
+                {
+                    progress?.Report(stockTask.Result);
+                    return stockTask.Result;
+                });
+                tickerLoadingTasks.Add(loadTask);
+            }
+
+            var allStocks = await Task.WhenAll(tickerLoadingTasks);
+
+            Stocks.ItemsSource = allStocks.SelectMany(stocks => stocks);
         }
 
         private Task<List<string>> SearchForStocks(CancellationToken cancellationToken)
@@ -140,6 +154,7 @@ namespace StockAnalyzer.Windows
 
             return loadLinesTask;            
         }
+
 
         public async Task GetStocks()
         {
